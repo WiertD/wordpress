@@ -1,0 +1,354 @@
+<?php
+/**
+ * GGKP Excel
+ * 
+ * @package   GGKP_Excel_Admin
+ * @author    GemeneGronden
+ * @license   GPL-2.0+
+ * @link      http://gemenegronden.nl
+ */
+
+/**
+ * @package GGKP_Excel_Admin
+ * @author  GemeneGronden
+ */
+class GGKP_Excel_Admin {
+
+    protected static $instance = null;
+
+    protected $plugin_screen_hook_suffix = null;
+
+    private function __construct() {
+
+        /*
+         * @TODO :
+         * - Uncomment following lines if the admin class should only be available for super admins
+         */
+        if( ! is_super_admin() ) {
+            return;
+        }
+
+        $plugin = GGKP_Excel::get_instance();
+        $this->plugin_slug = $plugin->get_plugin_slug();
+
+        // Add the options page and menu item.
+        add_action( 'admin_menu', array( $this, 'register_my_custom_menu_page' )  );
+
+        $this->upload_dir         = wp_upload_dir();    
+        $this->upload_base_url    = $this->upload_dir['baseurl'].'/ggkp-excel';
+        $this->upload_dir         = $this->upload_dir['basedir'].'/ggkp-excel';
+        $this->admin_plugin_url   = admin_url( "options-general.php?page=".$_GET["page"] );
+    }
+
+    function register_my_custom_menu_page(){
+        $this->plugin_screen_hook_suffix = add_menu_page(
+                __( 'Klompenpad Werkblad', $this->plugin_slug ),
+                __( 'Klompenpad Werkblad', $this->plugin_slug ),
+                'edit_pages',
+                $this->plugin_slug.'-admin-menu',
+                array( $this, 'display_plugin_admin_menu_page' ),
+                '',
+                '6.12'
+                );
+    }
+
+    function formatSizeUnits($bytes)
+    {
+        if ($bytes >= 1073741824)
+        {
+            $bytes = number_format($bytes / 1073741824, 2) . ' GB';
+        }
+        elseif ($bytes >= 1048576)
+        {
+            $bytes = number_format($bytes / 1048576, 2) . ' MB';
+        }
+        elseif ($bytes >= 1024)
+        {
+            $bytes = number_format($bytes / 1024, 2) . ' KB';
+        }
+        elseif ($bytes > 1)
+        {
+            $bytes = $bytes . ' bytes';
+        }
+        elseif ($bytes == 1)
+        {
+            $bytes = $bytes . ' byte';
+        }
+        else
+        {
+            $bytes = '0 bytes';
+        }
+
+        return $bytes;
+    }
+
+    function create_excel_file($file_name){
+
+        $new_file_name  = $file_name;
+
+        if(empty($new_file_name)){
+            return false;
+        }
+        if(empty($_FILES['file']) || empty($_FILES["file"]['name'])){
+            return false;
+        }
+
+        require_once( plugin_dir_path( __FILE__ ) . '../includes/simplexlsx.class.php' );
+
+        $xlsx = new SimpleXLSX( $_FILES['file']['tmp_name'] );
+        $sheetNames = $xlsx->sheetNames();
+        $dataSheet = 2;
+        if(is_array($sheetNames)){
+            foreach($sheetNames as $sheetId => $sheetName){
+                if($sheetId != 1){
+                    $the_name = $new_file_name.'_sheet_'.$sheetId;
+                }else{
+                    $the_name = $new_file_name;
+                }
+                if($sheetId == $dataSheet) {
+                    $filteredData = $this->filterData($xlsx,$dataSheet);
+                    $filteredJsonData = json_encode($filteredData);
+                    $this->createJsonFilteredDataFile( $filteredJsonData, $the_name );
+                }
+                $jsonData[$sheetId] = json_encode($xlsx->rows($sheetId));
+                $this->createJsonDataFile( $jsonData[$sheetId], $the_name );
+
+            }
+        }
+        $file_ext = end( explode( ".", $_FILES["file"]['name'] ) );
+        $options = array(
+                'slug'          => $new_file_name,
+                'filename'      => $new_file_name.'.'.$file_ext,
+                'json_file'     => $new_file_name.'.json',
+                'options_file'  => $new_file_name.'.options.json',
+                'filtered_data' => $new_file_name.'.filtered.json',
+                'file_ext'      => $file_ext,
+                'filesize'      => filesize($_FILES["file"]["tmp_name"]),
+                'upload_time'   => time(),
+                'sheet_names'   => $sheetNames,
+                );
+
+        $file_name      = $this->upload_dir.'/'.$new_file_name.'.options.json';
+        $fp = fopen($file_name,"wb");
+        fwrite($fp, json_encode($options));
+        fclose($fp);   
+
+        return array(
+                'jsonData' => $jsonData,
+                'options' => $options,
+                );
+
+    }
+
+    /**
+     * @param $jsonData
+     * @param $new_file_name
+     *
+     * @return array
+     */
+    public function createJsonDataFile($jsonData, $new_file_name ) {
+
+        $this->upload_dir = wp_upload_dir();
+        $this->upload_dir = $this->upload_dir['basedir'] . '/ggkp-excel';
+        $file_name        = $this->upload_dir . '/' . $new_file_name . '.json';
+
+        $fp = fopen( $file_name, "wb" );
+        fwrite( $fp, $jsonData );
+        fclose( $fp );
+
+        $file_ext = end( explode( ".", $_FILES["file"]['name'] ) );
+        $file_name = $this->upload_dir . '/' . $new_file_name . '.' . $file_ext;
+        $fp        = fopen( $file_name, "wb" );
+        fwrite( $fp, file_get_contents( $_FILES["file"]["tmp_name"] ) );
+        fclose( $fp );
+
+        return true;
+    }
+
+    public function createJsonFilteredDataFile($jsonData, $new_file_name ) {
+
+        $this->upload_dir = wp_upload_dir();
+        $this->upload_dir = $this->upload_dir['basedir'] . '/ggkp-excel';
+        $file_name        = $this->upload_dir . '/' . $new_file_name . '.filtered.json';
+
+        $fp = fopen( $file_name, "wb" );
+        fwrite( $fp, $jsonData );
+        fclose( $fp );
+
+        return true;
+    }
+    private function columnIndex( $cell = 'A1' ) {
+
+        if (preg_match("/([A-Z]+)(\d+)/", $cell, $matches)) {
+
+            $col = $matches[1];
+            $row = $matches[2];
+
+            $colLen = strlen($col);
+            $index = 0;
+
+            for ($i = $colLen-1; $i >= 0; $i--)
+                $index += (ord($col{$i}) - 64) * pow(26, $colLen-$i-1);
+
+            return array($index-1, $row-1);
+        } else
+            throw new Exception("Invalid cell index.");
+    }
+
+    public function filterData($xlsx, $sheetNumber) {
+        $data = $xlsx->rows($sheetNumber);
+
+        $rowIndex['pageid'] = 2;
+        $rowIndex['data'] = 3;
+
+        $tmp = $this->columnIndex('Y1');
+        $bedrijf = $tmp[0];
+        $tmp = $this->columnIndex('AD1');
+        $straat = $tmp[0];
+        $tmp = $this->columnIndex('AE1');
+        $postcode = $tmp[0];
+        $tmp = $this->columnIndex('AF1');
+        $woonplaats = $tmp[0];
+        $tmp = $this->columnIndex('AJ1');
+        $website = $tmp[0];
+        $tmp = $this->columnIndex('AK1');
+        $open = $tmp[0];
+
+        $tmp = $this->columnIndex('AL1');
+        $colIndex['folders']['start'] = $tmp[0];
+        $tmp = $this->columnIndex('FA1');
+        $colIndex['folders']['eind'] = $tmp[0];
+
+        $tmp = $this->columnIndex('FB1');
+        $colIndex['relaties']['start'] = $tmp[0];
+        $tmp = $this->columnIndex('JQ1');
+        $colIndex['relaties']['eind'] = $tmp[0];
+
+        $j = $rowIndex['data'];
+        $pid = $rowIndex['pageid'];
+
+        $output = array();
+        while( !empty($data[$j][$bedrijf])) {
+            $i = $colIndex['folders']['start'];
+            while( $i <= $colIndex['folders']['eind']) {
+                if($data[$j][$i] >= 1) {
+                    $regel = array();
+                    $pageid = $data[$pid][$i];
+                    if( !empty($data[$j][$website] )) {
+                        $regel[] = '<a href="' . $data[$j][$bedrijf] . '">' . $data[$j][$bedrijf] . '</a>';
+                    } else {
+                        $regel[] = $data[$j][$bedrijf];
+                    }
+                    if( !empty($data[$j][$straat] )) {
+                        $regel[] = $data[$j][$straat];
+                    }
+                    if( !empty($data[$j][$woonplaats] )) {
+                        $regel[] = $data[$j][$woonplaats];
+                    }
+                    if( !empty($data[$j][$open] )) {
+                        $regel[] = $data[$j][$open];
+                    }
+                    $output[$pageid]['folders'][$j] = implode(', ',$regel);
+                }
+                $i++;
+            }
+
+            $i = $colIndex['relaties']['start'];
+            while( $i <= $colIndex['relaties']['eind']) {
+                if($data[$j][$i] >= 1) {
+	            $regel = array();
+                    $pageid = $data[$pid][$i];
+                    if( !empty($data[$j][$website] )) {
+                        $regel[] = '<a href="' . $data[$j][$bedrijf] . '">' . $data[$j][$bedrijf] . '</a>';
+                    } else {
+                        $regel[] = $data[$j][$bedrijf];
+                    }
+                    if( !empty($data[$j][$straat] )) {
+                        $regel[] = $data[$j][$straat];
+                    }
+                    if( !empty($data[$j][$woonplaats] )) {
+                        $regel[] = $data[$j][$woonplaats];
+                    }
+                    if( !empty($data[$j][$open] )) {
+                        $regel[] = $data[$j][$open];
+                    }
+                    $output[$pageid]['relaties'][$j] = implode(', ',$regel);
+                }
+                $i++;
+            }
+            $j++;
+        }
+        return $output;
+    }
+
+    function getFileList(){
+
+        $this->upload_dir         = wp_upload_dir();    
+        $this->upload_dir         = $this->upload_dir['basedir'].'/ggkp-excel';
+
+        //get all image files with a .jpg extension.
+        $files = glob($this->upload_dir . "/*.options.json");
+
+        for($i=0;$i<count($files);$i++){ 
+            $file_data[$i] = (array) json_decode(file_get_contents($files[$i]));
+        }
+
+        return $file_data;  
+    }
+
+    /**
+     * Return an instance of this class.
+     *
+     * @since     1.0.0
+     *
+     * @return    object    A single instance of this class.
+     */
+    public static function get_instance() {
+
+        /*
+         * @TODO :
+         *
+         * - Uncomment following lines if the admin class should only be available for super admins
+         */
+        if( ! is_super_admin() ) {
+            return;
+        } 
+
+        // If the single instance hasn't been set, set it now.
+        if ( null == self::$instance ) {
+            self::$instance = new self;
+        }
+
+        return self::$instance;
+    }
+
+    /**
+     * Render the settings page for this plugin.
+     *
+     * @since    1.0.0
+     */
+    public function display_plugin_admin_menu_page() {
+
+        $this->upload_dir         = wp_upload_dir();    
+        $this->upload_base_url    = $this->upload_dir['baseurl'].'/ggkp-excel';
+        $this->upload_dir         = $this->upload_dir['basedir'].'/ggkp-excel';
+        $this->admin_plugin_url   = admin_url( "options-general.php?page=".$_GET["page"] );
+
+        if(!is_dir($this->upload_dir)){
+            $createUploadFolderStarted  = true;
+            $createUploadFolderRes      = mkdir($this->upload_dir);
+        }
+        if(!is_dir($this->upload_dir)){
+            $uploadFolderDoesNotExists = true;
+        }
+
+        if (isset($_FILES['file'])) {
+            $uploadStarted  = true;
+            $uploadResult     = $this->create_excel_file(GGKP_WERKBLAD); 
+        }
+
+        $file_data = $this->getFileList();
+        include_once( 'views/admin-menu.php' );
+    }
+
+}

@@ -1,0 +1,128 @@
+<?php
+/**
+ * Represents the view for the administration dashboard.
+ *
+ * This includes the header, options, and other information that should provide
+ * The User Interface to the end user.
+ *
+ * @package   GGKP_Excel
+ * @author    GemeneGronden <info@gemenegronden.nl>
+ * @license   GPL-2.0+
+ * @link      http://gemenegronden.nl
+ */
+?>
+
+<?php if (isset($createUploadFolderStarted)) { ?>
+    
+    <?php if($createUploadFolderRes){ ?>
+        <div id="message" class="updated fade"><p>Upload folder "wp-content/uploads/ggkp-excel" successvol aangemaakt. </p></div>
+    <?php }else{ ?>
+        
+    <?php }?>
+
+<?php } ?>
+
+
+<?php if (isset($uploadFolderDoesNotExists)) { ?>
+    
+<div id="message" class="error fade"><p>De upload folder "wp-content/uploads/ggkp-excel" kan miet worden gemaakt. Controleer de rechten. </p></div>
+
+<?php } ?>
+
+
+<?php if(isset($deleteStarted)){ ?>
+    
+    <?php if($deleteResult===TRUE){ ?>
+        <div id="message" class="updated fade"><p>Bestand is verwijderd! </p></div>
+    <?php }else{ ?>
+        <div id="message" class="error fade"><p>Het is niet gelukt het bestand te verwijderen. </p></div>
+    <?php  }?>
+
+<?php  }?>
+
+
+
+<?php if (isset($uploadStarted)) { ?>
+    
+    <?php if(!$uploadResult){ ?>
+        <div id="message" class="error fade"><p>Upload mislukt!</p></div>
+    <?php }else{ ?>
+        <div id="message" class="updated fade"><p>Het bestand is succesvol bijgewerkt </p></div>
+    <?php }?>
+
+<?php } ?>
+
+<div class="wrap">
+
+	<?php screen_icon('edit-pages'); ?>
+	<h2>
+        <?php echo esc_html( get_admin_page_title() ); ?>
+    </h2>
+
+    <div style="width: 100%; float: left;">
+        <div id="poststuff">
+            <div id="post-body" class="metabox-holder"  style="width:520px">
+                <div id="post-body-content">
+                    <div id="namediv" class="stuffbox">
+                        <h3>Werkblad bijwerken</h3>
+                        <div class="inside">
+                            <form method="post" enctype="multipart/form-data">
+                                <table class="form-table" style="width:500px">
+                                    <tr>
+                                        <td>Bestand:</td>
+                                        <td><input type="file" name="file"  style="width:400px"   />Alleen *.xlsx bestanden</td>
+                                    </tr>    
+                                    <tr>
+                                        <td></td>
+                                        <td><input type="submit" class="button-primary" value="Start upload" /></td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+                    </div>
+                </div><!-- /post-body-content -->
+            </div>
+        </div>
+    </div>  
+
+
+
+
+
+
+    <div style="display: none;">
+        <div class="uploader" id="uploader">
+            <form method="post" enctype="multipart/form-data">
+            <input class="input_file_name" type="hidden" name="file_name" /><input type="file" name="file"  /><input type="submit" class="button-primary" value="Start upload" />
+            </form>
+         </div>   
+    </div>
+
+    <div style="margin-top:20px;">
+    </div>
+
+	<?php if(!empty($uploadResult['jsonData'])):?>
+  
+        <h2>Import Preview</h2>
+        <div style="overflow:scroll;height:300px;width:100%;font-size:11px;color:#fff;background-color:#000;">
+            <pre><?php
+	            $count = 1;
+	            foreach($uploadResult['jsonData'] as $data){
+		           echo "################ SHEET $count #########################";
+		            echo "\r\n";
+		            print_r( json_decode($data));
+		            $count++;
+	            }
+	            ?></pre>
+        </div>
+
+    <?php endif; ?>
+    
+    
+    
+</div>
+ 
+
+
+
+

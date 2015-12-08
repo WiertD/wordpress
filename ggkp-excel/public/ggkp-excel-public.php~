@@ -1,0 +1,139 @@
+<?php
+/**
+ * Plugin Name.
+ *
+ * @package   Excel_Import
+ * @author    GemeneGronden
+ * @license   GPL-2.0+
+ * @link      http://gemenegronden.nl
+ */
+
+
+function ggkp_excel_get($name, $sheet=1){
+    $excel_data = new GGKP_Excel();
+    return $excel_data->get_excel_data($name, $sheet);
+}
+
+/**
+ * Plugin class. This class should ideally be used to work with the
+ * public-facing side of the WordPress site.
+ */
+class GGKP_Excel {
+
+    const VERSION = '1.0.1';
+    protected $plugin_slug = 'ggkp-excel';
+    protected static $instance = null;
+
+    public function __construct() {
+        $upload_dir                = wp_upload_dir();    
+        $this->upload_base_url     = $upload_dir['baseurl'].'/ggkp-excel';
+        $this->upload_dir          = $upload_dir['basedir'].'/ggkp-excel';
+        $this->admin_plugin_url    = admin_url( "options-general.php?page=".$_GET["page"] );
+        $this->plugin_dir          = plugin_dir_path( __FILE__ );
+        $this->template_dir        = $this->plugin_dir.'/templates';
+
+    }
+
+
+    public function getTemplate($template = 'default',$data = array(), $name = ''){
+        $template_path = $this->template_dir.'/'.$template .'.php';
+        ob_start();
+        include($template_path); //file_get_contents();
+        $out = ob_get_contents();
+        ob_end_clean();
+        return $out;
+    }
+
+    public function get_excel_data($name, $sheet=''){
+        $file_name = $name.'.json';
+        if($sheet!=1){
+            $file_name = $name.'_sheet_'.$sheet.'.json';
+        }
+        $file_path_name = $this->upload_dir.'/'.$file_name;
+        return json_decode(file_get_contents($file_path_name));
+    }
+
+    public function get_plugin_slug() {
+        return $this->plugin_slug;
+    }
+
+    public static function get_instance() {
+
+        // If the single instance hasn't been set, set it now.
+        if ( null == self::$instance ) {
+            self::$instance = new self;
+        }
+
+        return self::$instance;
+    }
+
+    /**
+     * Fired when the plugin is activated.
+     *
+     * @param    boolean    $network_wide    True if WPMU superadmin uses
+     *                                       "Network Activate" action, false if
+     *                                       WPMU is disabled or plugin is
+     *                                       activated on an individual blog.
+     */
+    public static function activate( $network_wide ) {
+
+        if ( function_exists( 'is_multisite' ) && is_multisite() ) {
+
+            if ( $network_wide  ) {
+
+                // Get all blog ids
+                $blog_ids = self::get_blog_ids();
+
+                foreach ( $blog_ids as $blog_id ) {
+
+                    switch_to_blog( $blog_id );
+                    self::single_activate();
+                }
+
+                restore_current_blog();
+
+            } else {
+                self::single_activate();
+            }
+
+        } else {
+            self::single_activate();
+        }
+
+    }
+
+    /**
+     * Fired when the plugin is deactivated.
+     * @param    boolean    $network_wide    True if WPMU superadmin uses
+     *                                       "Network Deactivate" action, false if
+     *                                       WPMU is disabled or plugin is
+     *                                       deactivated on an individual blog.
+     */
+    public static function deactivate( $network_wide ) {
+
+        if ( function_exists( 'is_multisite' ) && is_multisite() ) {
+
+            if ( $network_wide ) {
+
+                // Get all blog ids
+                $blog_ids = self::get_blog_ids();
+
+                foreach ( $blog_ids as $blog_id ) {
+
+                    switch_to_blog( $blog_id );
+                    self::single_deactivate();
+
+                }
+
+                restore_current_blog();
+
+            } else {
+                self::single_deactivate();
+            }
+
+        } else {
+            self::single_deactivate();
+        }
+
+    }
+}
